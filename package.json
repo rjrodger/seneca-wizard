@@ -1,0 +1,45 @@
+{
+  "name": "seneca-wizard",
+  "version": "0.1.0",
+  "description": "Seneca plugin to support wizard interfaces",
+  "main": "wizard.js",
+  "scripts": {
+    "test": "node_modules/.bin/mocha test/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/rjrodger/seneca-wizard.git"
+  },
+  "keywords": [
+    "seneca",
+    "wizard",
+    "plugin"
+  ],
+  "author": "Richard Rodger (http://richardrodger.com)",
+  "license": "MIT",
+  "dependencies": {
+    "underscore": "~1.5.2"
+  },
+  "peerDependencies": {
+    "seneca": "0.x",
+    "seneca-user": "0.x",
+    "seneca-auth": "0.x",
+    "seneca-account": "0.x",
+    "seneca-project": "0.x"
+  },
+  "devDependencies": {
+    "seneca": "0.x",
+    "seneca-user": "0.x",
+    "seneca-auth": "0.x",
+    "seneca-account": "0.x",
+    "seneca-project": "0.x",
+    "gex": "~0.1.1",
+    "chai": "~1.8.0",
+    "mocha": "~1.13.0"
+  },
+  "files": [
+    "README.md",
+    "LICENSE.txt",
+    "wizard.js"
+  ]
+}
