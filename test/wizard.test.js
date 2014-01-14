@@ -9,6 +9,7 @@ var seneca  = require('seneca')
 var assert  = require('chai').assert
 
 var _      = require('underscore')
+var async  = require('async')
 
 
 
@@ -39,19 +40,85 @@ si.use( '..' )
 
 var wizardpin   = si.pin({role:'wizard',cmd:'*'})
 var projectpin  = si.pin({role:'project',cmd:'*'})
+var accountpin  = si.pin({role:'account',cmd:'*'})
 var userpin     = si.pin({role:'user',cmd:'*'})
 
-var projectent = si.make$('sys','project')
-var userent    = si.make$('sys','user')
+var memstorepin = si.pin({role:'mem-store',cmd:'*'})
 
+var accountent = si.make$('sys/account')
 
 describe('wizard', function() {
 
   var tmp = {}
   
-  it('start', function(fin) {
-    fin()
+  it('setup', function(fin) {
+    userpin.register({nick:'u1'}, cberr(function(out){
+      wizardpin.save({user:out.user,name:'foo'}, cberr(function(out){
+        var wizard = out.wizard
+        tmp.wiz1 = wizard.id
+
+        // steps and items
+        async.map(
+          [
+            {title:'AAA',index:0,items:[
+              {label:'a1',kind:'zig',index:0},
+              {label:'a2',kind:'zig',index:1},
+              {label:'a3',kind:'zag',index:2},
+            ]},
+
+            {title:'BBB',index:1,items:[
+              {label:'b1',kind:'zag',index:0},
+              {label:'b2',kind:'zag',index:1},
+            ]},
+
+            {title:'CCC',index:2,items:[
+              {label:'c1',kind:'zog',index:0},
+            ]}
+          ],
+
+          function(step,stepdone) {
+            step.wizard = wizard.id
+            var items = step.items
+            delete step.items
+
+            wizardpin.savestep( step, cberr(function(out){
+
+              async.map( 
+                items, 
+                function(item,itemdone){
+                  item.wizard  = wizard.id
+                  item.wizstep = out.wizstep.id
+                  wizardpin.saveitem(item, itemdone)
+                },
+                stepdone
+              )
+            }))
+          },
+
+          cberr(function(res) {
+            memstorepin.dump({},cberr(function(dump){
+              console.log(dump)
+              fin()
+            }))
+          })
+        )
+
+      }))
+    }))
+  })  
+
+
+  it('run',function(fin){
+    wizardpin.open({wizard:tmp.wiz1.id,tag:'jan'}, cberr(function(out){
+      console.log(out)
+
+      memstorepin.dump({},cberr(function(dump){
+        console.log(dump)
+        fin()
+      }))
+      
+    }))
   })
-  
+
 })
 

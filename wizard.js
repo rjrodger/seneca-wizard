@@ -25,13 +25,11 @@ module.exports = function( options ) {
 
 
 
-  var userent    = seneca.make$('sys/user')
+  var userent = seneca.make$('sys/user')
+
 
   // defines a wizard - a wizard is a "project"
   var projectent = seneca.make$('sys/project')
-
-  // individual instance of wizard run-through
-  var wizrunent  = seneca.make$('sys/wizrun')
 
   // wizard steps for each wizard
   var wizstepent = seneca.make$('sys/wizstep')
@@ -40,26 +38,54 @@ module.exports = function( options ) {
   var wizitement = seneca.make$('sys/wizitem')
 
 
-  seneca.add({role:plugin,cmd:'save'},          cmd_save)
+  // individual instance of wizard run-through
+  var wizrunent  = seneca.make$('sys/wizrun')
+
+  // wizard run-through step
+  var wizrunstepent  = seneca.make$('sys/wizrunstep')
+
+  // wizard run-through step item
+  var wizrunitement  = seneca.make$('sys/wizrunitem')
+
+
+
+  seneca.add({role:plugin,cmd:'save'},          
+             {required$:'user'},
+             cmd_save)
+
   seneca.add({role:plugin,cmd:'load'},          cmd_load)
   seneca.add({role:plugin,cmd:'savestep'},      make_savesub(wizstepent,'wizstep',projectent,'wizard'))
   seneca.add({role:plugin,cmd:'loadstep'},      make_loadsub(wizstepent,'wizstep','wizard'))
   seneca.add({role:plugin,cmd:'saveitem'},      make_savesub(wizitement,'wizitem',wizstepent,'wizstep'))
   seneca.add({role:plugin,cmd:'loaditem'},      make_loadsub(wizitement,'wizitem','wizstep'))
+
   seneca.add({role:plugin,cmd:'saverun'},       make_savesub(wizrunent,'wizrun',projectent,'wizard'))
   seneca.add({role:plugin,cmd:'loadrun'},       make_loadsub(wizrunent,'wizrun','wizard'))
+  seneca.add({role:plugin,cmd:'saverunstep'},   make_savesub(wizrunstepent,'wizrunstep',wizrunent,'wizrun'))
+  seneca.add({role:plugin,cmd:'loadrunstep'},   make_loadsub(wizrunstepent,'wizrunstep','wizrun'))
+  seneca.add({role:plugin,cmd:'saverunitem'},   make_savesub(wizrunitement,'wizrunitem',wizrunstepent,'wizrunstep'))
+  seneca.add({role:plugin,cmd:'loadrunitem'},   make_loadsub(wizrunitement,'wizrunitem','wizrunstep'))
 
 
   seneca.add({role:plugin,cmd:'open'},       cmd_open)
-  seneca.add({role:plugin,cmd:'step'},       cmd_step)
+  seneca.add({role:plugin,cmd:'next'},       cmd_next)
+  seneca.add({role:plugin,cmd:'prev'},       cmd_prev)
   seneca.add({role:plugin,cmd:'close'},      cmd_close)
-
+  seneca.add({role:plugin,cmd:'getrunstep'}, cmd_getrunstep)
+  seneca.add({role:plugin,cmd:'setrunstep'}, cmd_setrunstep)
 
 
   seneca.act({
     role:'util',
     cmd:'ensure_entity',
-    pin:{role:plugin,cmd:'*'},
+    pin:[
+      {role:plugin,cmd:'open'},
+      {role:plugin,cmd:'next'},
+      {role:plugin,cmd:'prev'},
+      {role:plugin,cmd:'close'},
+      {role:plugin,cmd:'getrunstep'},
+      {role:plugin,cmd:'setrunstep'},
+    ],
     entmap:{
       wizard:projectent,
       wizstep:wizstepent,
@@ -71,27 +97,32 @@ module.exports = function( options ) {
 
 
 
-
   function cmd_save( args, done ) {
 
     // new wizard
     if( null == args.id ) {
 
       // prefix kind to avoid namespace conflicts with other kinds of projects
-      args.kind = options.kindprefix + (null == args.code ? 'primary' : args.code)
+      args.kind = options.kindprefix + (null == args.code ? 'primary' : args.kind)
 
       // mark this as a wizard for query convenience
       args.wiz  = true
     }
 
-    this.prior( args, providewizard(done) )
+    args.role = 'project'
+    args.cmd  = 'save'
+    args.account = args.user.accounts[0]
+
+    this.act( args, providewizard(done) )
   }
 
 
 
   function cmd_load( args, done ) {
     args.project = args.wizard
-    this.prior( args, providewizard(done) )
+    args.role = 'project'
+    args.cmd  = 'load'
+    this.act( args, providewizard(done) )
   }
 
 
@@ -313,11 +344,11 @@ module.exports = function( options ) {
     return function( args, done ) {
       var seneca = this
 
-      var parentent = args[parent]
+      var parentid  = args[parent]
       var subid     = args.id 
       
       var index = args.index
-      if( null == index || index < 0 ) return done( seneca.fail('bad-'+name+'-index');
+      if( null == index || index < 0 ) return done( seneca.fail('bad-'+name+'-index'));
 
       if( null == subid ) {
         update( subent.make$() )
@@ -325,7 +356,7 @@ module.exports = function( options ) {
       else {
         subent.load$(subid,function(err,sub){
           if( err ) return done(err);
-          if( !sub ) return done( seneca.fail('no-'+name);
+          if( !sub ) return done( seneca.fail('no-'+name));
         
           update(sub)
         })
@@ -333,7 +364,7 @@ module.exports = function( options ) {
 
       function update(sub) {
         var controlled = {}
-        controlled[parent] = parentent.id
+        controlled[parent] = parentid
 
         var fields = seneca.util.argprops(
           // default values
@@ -348,18 +379,23 @@ module.exports = function( options ) {
           // invalid properties, will be deleted
           'id, role, cmd, user')
 
-        sub.data$(fields).save$( function( err, sub ) {
+        parentent.load$(parentid, function(err,parent){
           if( err ) return done(err);
 
-          parentent[name+'s'][index] = sub.id
-
-          parentent.save$( function(err,parentent) {
+          sub.data$(fields).save$( function( err, sub ) {
             if( err ) return done(err);
 
-            var out = {ok:true}
-            out[name]   = sub
-            out[parent] = parentent
-            done(null,out)
+            parent[name+'s'] = parent[name+'s'] || []
+            parent[name+'s'][index] = sub.id
+
+            parent.save$( function(err,parent) {
+              if( err ) return done(err);
+
+              var out = {ok:true}
+              out[name]   = sub
+              out[parent] = parent
+              done(null,out)
+            })
           })
         })
       }
@@ -507,9 +543,6 @@ module.exports = function( options ) {
       })
     }
   }
-  */
-
-
 
    */
 
@@ -553,7 +586,13 @@ module.exports = function( options ) {
 
   // define sys/account entity
   seneca.add({init:plugin}, function( args, done ){
-    seneca.act('role:util, cmd:define_sys_entity', {list:[wizitement.canon$(),wizrunent.canon$()]})
+    seneca.act('role:util, cmd:define_sys_entity', {list:[
+      wizstepent.canon$(),
+      wizitement.canon$(),
+      wizrunent.canon$(),
+      wizrunstepent.canon$(),
+      wizrunitement.canon$()
+    ]})
     done()
   })
 

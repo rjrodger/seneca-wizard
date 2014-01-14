@@ -18,7 +18,8 @@
   "author": "Richard Rodger (http://richardrodger.com)",
   "license": "MIT",
   "dependencies": {
-    "underscore": "~1.5.2"
+    "underscore": "~1.5.2",
+    "async": "~0.2.9"
   },
   "peerDependencies": {
     "seneca": "0.x",
