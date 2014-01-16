@@ -47,15 +47,29 @@ var memstorepin = si.pin({role:'mem-store',cmd:'*'})
 
 var accountent = si.make$('sys/account')
 
+
+function dump(fin,err) {
+  memstorepin.dump({},cberr(function(dump){
+    console.log(dump)
+    fin(err)
+  }))
+}
+
+
 describe('wizard', function() {
 
   var tmp = {}
   
   it('setup', function(fin) {
+    console.log('SETUP')
+
     userpin.register({nick:'u1'}, cberr(function(out){
+
       wizardpin.save({user:out.user,name:'foo'}, cberr(function(out){
         var wizard = out.wizard
-        tmp.wiz1 = wizard.id
+        tmp.wiz1id = wizard.id
+
+        //return dump(fin)
 
         // steps and items
         async.map(
@@ -95,12 +109,12 @@ describe('wizard', function() {
             }))
           },
 
-          cberr(function(res) {
-            memstorepin.dump({},cberr(function(dump){
-              console.log(dump)
-              fin()
-            }))
-          })
+          function(err){
+            console.log('END SETUP')
+            console.log(tmp)
+            fin()
+            //dump(fin,err)
+          }
         )
 
       }))
@@ -109,16 +123,18 @@ describe('wizard', function() {
 
 
   it('run',function(fin){
-    wizardpin.open({wizard:tmp.wiz1.id,tag:'jan'}, cberr(function(out){
-      console.log(out)
-
-      memstorepin.dump({},cberr(function(dump){
-        console.log(dump)
-        fin()
-      }))
+    console.log('RUN')
+    wizardpin.open({wizard:tmp.wiz1id,tag:'jan'}, cberr(function(out){
+      tmp.run1 = out.run
       
+      wizardpin.next({wizrun:tmp.run1},cberr(function(out){
+        console.log(out)
+
+        dump(fin)
+      }))
     }))
   })
+
 
 })
 

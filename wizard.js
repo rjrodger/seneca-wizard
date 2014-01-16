@@ -75,6 +75,7 @@ module.exports = function( options ) {
   seneca.add({role:plugin,cmd:'setrunstep'}, cmd_setrunstep)
 
 
+
   seneca.act({
     role:'util',
     cmd:'ensure_entity',
@@ -135,6 +136,7 @@ module.exports = function( options ) {
       wizrun = wizrunent.make$({step:-1})
     }
 
+    wizrun.wizard = wizard.id
     wizrun.state  = 'open' 
     wizrun.opened = new Date().toISOString() 
 
@@ -166,29 +168,27 @@ module.exports = function( options ) {
     var seneca = this
     var wizrun = args.wizrun
 
-    var step     = args.step
-    var stepdata = args.stepdata
+    projectent.load$(wizrun.wizard,function(err,wizard){
+      if(err) return done(wizard);
+      if( !wizard ) return done( seneca.fail('no-wizard',{wizrun:wizrun}));
+      
+      var step     = null == args.step ? wizrun.step : args.step
+      var stepdata = args.stepdata
 
-    this.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:args.step},function(err,out){
-      if( err ) return done(err);
-      if( !out.ok ) return done(null,out);
-
-      this.act(_.extend({},args.stepdata,{role:plugin,cmd:'setrunstep',wizrunstep:out.wizrunstep}),function(err,out){
-        if( err ) return done(err);
-        if( !out.ok ) return done(null,out);
-
+      function nextstep() {
         wizrun.step += 1
         var first = 0 == wizrun.step
-        var last  = wizrun.step >= out.wizard.wizsteps.length
+        var last  = wizrun.step >= wizard.wizsteps.length
 
         if( last ) {
           wizrun.step -= 1
         }
 
-        this.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:wizrun.step},function(err,out){
+        console.log('bb')
+        seneca.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:wizrun.step},function(err,out){
           if( err ) return done(err);
           if( !out.ok ) return done(null,out);
-
+          
           wizrun.save$( function(err, wizrun) {
             if( err ) return done(err);
             out.wizrun = wizrun
@@ -197,9 +197,28 @@ module.exports = function( options ) {
             done(null,out)
           })
         })
-      })
+      }
+
+
+      if( step < 0 ) {
+        return nextstep()
+      }
+      else {
+        seneca.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:args.step},function(err,out){
+          if( err ) return done(err);
+          if( !out.ok ) return done(null,out);
+
+          this.act(_.extend({},args.stepdata,{role:plugin,cmd:'setrunstep',wizrunstep:out.wizrunstep}),function(err,out){
+            if( err ) return done(err);
+            if( !out.ok ) return done(null,out);
+
+            return nextstep()
+          })
+        })
+      }
     })
   }
+
 
 
   function cmd_prev( args, done ) {
@@ -233,9 +252,14 @@ module.exports = function( options ) {
     var seneca = this
     var wizrun = args.wizrun
 
+    console.log(wizrun)
+
     projectent.load$( wizrun.wizard, function(err,wizard) {
       if( err ) return done(err);
-      if( !sub ) return done( seneca.fail('no-wizard',{wizrun:wizrun}));
+      if( !wizard ) return done( seneca.fail('no-wizard',{wizrun:wizrun}));
+
+      console.log(args.step)
+      console.log(wizard)
 
       var wizstepid = wizard.wizsteps[args.step]
       if( null == wizstepid ) return done( seneca.fail('no-wizstep',{wizard:wizard,step:args.step}));
@@ -248,7 +272,7 @@ module.exports = function( options ) {
           if( err ) return done(err);
 
           if( !wizrunstep ) {
-            wizrunstep = wizrunstep.make$({
+            wizrunstep = wizrunstepent.make$({
               wizrun:wizrun.id,
               wizstep:wizstep.id,
               step:args.step,
@@ -257,7 +281,7 @@ module.exports = function( options ) {
             })
           }
         
-          wizitemsent.list$({wizstep:wizstep.id},function(err,wizitems){
+          wizitement.list$({wizstep:wizstep.id},function(err,wizitems){
             if( err ) return done(err);
 
             done(null,{
@@ -381,6 +405,7 @@ module.exports = function( options ) {
 
         parentent.load$(parentid, function(err,parent){
           if( err ) return done(err);
+          if( !parent ) return done( seneca.fail('no-'+parent));
 
           sub.data$(fields).save$( function( err, sub ) {
             if( err ) return done(err);
