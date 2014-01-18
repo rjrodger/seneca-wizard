@@ -3,6 +3,7 @@
 
 
 var _     = require('underscore')
+var async = require('async')
 
 
 module.exports = function( options ) {
@@ -13,6 +14,7 @@ module.exports = function( options ) {
 
 
   options = seneca.util.deepextend({
+    loadlimit:  3,
     prefix:     '/wizard',
     kindprefix: 'wizard-',
     web:        true,
@@ -134,19 +136,38 @@ module.exports = function( options ) {
 
     if( null == wizrun ) {
       wizrun = wizrunent.make$({step:-1})
+      wizrun.step = -1
     }
 
-    wizrun.wizard = wizard.id
-    wizrun.state  = 'open' 
-    wizrun.opened = new Date().toISOString() 
+    var fields = seneca.util.argprops(
+      // default values
+      { tag: 'default' }, 
+          
+      // caller specified values, overrides defaults
+      args, 
+
+      // controlled values, can't be overridden
+      {
+        step:   wizrun.step,
+        wizard: wizard.id,
+        state:  'open',
+        opened: new Date().toISOString() 
+      },
+
+      // invalid properties, will be deleted
+      'id, role, cmd, user')
+
+    wizrun.data$(fields)
 
     if( args.user ) {
       wizrun.user = args.user.id
     }
 
+
     wizrun.save$(function(err,wizrun){
       done(err,{ok:!err,run:wizrun})
     })
+
   }
 
 
@@ -172,11 +193,12 @@ module.exports = function( options ) {
       if(err) return done(wizard);
       if( !wizard ) return done( seneca.fail('no-wizard',{wizrun:wizrun}));
       
-      var step     = null == args.step ? wizrun.step : args.step
-      var stepdata = args.stepdata
+      var step = null == args.step ? wizrun.step : args.step
 
       function nextstep() {
+        console.log('NEXTSTEP')
         wizrun.step += 1
+
         var first = 0 == wizrun.step
         var last  = wizrun.step >= wizard.wizsteps.length
 
@@ -184,31 +206,36 @@ module.exports = function( options ) {
           wizrun.step -= 1
         }
 
-        console.log('bb')
         seneca.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:wizrun.step},function(err,out){
           if( err ) return done(err);
           if( !out.ok ) return done(null,out);
-          
+
           wizrun.save$( function(err, wizrun) {
             if( err ) return done(err);
+
+            console.log(wizrun)
+
             out.wizrun = wizrun
             out.first = first
             out.last   = last
+
             done(null,out)
           })
         })
       }
 
-
       if( step < 0 ) {
         return nextstep()
       }
       else {
-        seneca.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:args.step},function(err,out){
+        seneca.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:step},function(err,out){
           if( err ) return done(err);
           if( !out.ok ) return done(null,out);
 
-          this.act(_.extend({},args.stepdata,{role:plugin,cmd:'setrunstep',wizrunstep:out.wizrunstep}),function(err,out){
+          var setargs = _.extend({},args,{role:plugin,cmd:'setrunstep',wizrunstep:out.wizrunstep,tag:wizrun.tag,state:'closed'})
+          console.log(setargs)
+
+          seneca.act(setargs,function(err,out){
             if( err ) return done(err);
             if( !out.ok ) return done(null,out);
 
@@ -233,7 +260,7 @@ module.exports = function( options ) {
       wizrun.step = 0
     }
 
-    this.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:wizrun.step},function(err,out){
+    seneca.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:wizrun.step},function(err,out){
       if( err ) return done(err);
       if( !out.ok ) return done(null,out);
 
@@ -249,17 +276,13 @@ module.exports = function( options ) {
 
 
   function cmd_getrunstep( args, done ) {
+    console.log('GETRUNSTEP')
     var seneca = this
     var wizrun = args.wizrun
-
-    console.log(wizrun)
 
     projectent.load$( wizrun.wizard, function(err,wizard) {
       if( err ) return done(err);
       if( !wizard ) return done( seneca.fail('no-wizard',{wizrun:wizrun}));
-
-      console.log(args.step)
-      console.log(wizard)
 
       var wizstepid = wizard.wizsteps[args.step]
       if( null == wizstepid ) return done( seneca.fail('no-wizstep',{wizard:wizard,step:args.step}));
@@ -277,21 +300,27 @@ module.exports = function( options ) {
               wizstep:wizstep.id,
               step:args.step,
               state:'open',
-              opened:new Date().toISOString()
+              opened:new Date().toISOString(),
+              tag:wizrun.tag,
+              wizitems:wizstep.wizitems
             })
           }
         
-          wizitement.list$({wizstep:wizstep.id},function(err,wizitems){
+          wizrunstep.save$( function(err,wizrunstep){
             if( err ) return done(err);
 
-            done(null,{
-              ok:true,
-              wizard:wizard,
-              wizstep:wizstep,
-              wizitems:wizitems,
-              wizrun:wizrun,
-              wizrunstep:wizrunstep,
-              step:args.step})
+            wizitement.list$({wizstep:wizstep.id},function(err,wizitems){
+              if( err ) return done(err);
+
+              done(null,{
+                ok:true,
+                wizard:wizard,
+                wizstep:wizstep,
+                wizitems:wizitems,
+                wizrun:wizrun,
+                wizrunstep:wizrunstep,
+                step:args.step})
+            })
           })
         })
       })
@@ -300,16 +329,26 @@ module.exports = function( options ) {
 
 
   function cmd_setrunstep( args, done ) {
+    console.log('SETRUNSTEP')
     var seneca = this
 
-    var winrunstep = args.wizrunstep
+    var wizrunstep = args.wizrunstep
+
+    var items = args.items
+    delete args.items
+    for( var i = 0; i < items.length; i++ ) {
+      items[i].index = i 
+    }
+
+    console.log(items)
 
     var controlled = {
       wizrun:wizrunstep.wizrun,
       wizstep:wizrunstep.wizstep,
       step:wizrunstep.wizstep,
       opened:wizrunstep.opened,
-      closed:wizrunstep.closed
+      closed:new Date().toISOString(),
+      tag:wizrunstep.tag,
     }
 
     var fields = seneca.util.argprops(
@@ -325,10 +364,41 @@ module.exports = function( options ) {
       // invalid properties, will be deleted
       'id, role, cmd, user')
 
-    wizrunstep.data$(fields).save$( function( err, wizrunstep ) {
-      done(err,{ok:!err,wizrunstep:wizrunstep})
+    console.log(fields)
+
+    wizrunstep.data$(fields)
+    console.log('CCC')
+
+    console.log(wizrunstep)
+
+    wizrunstep.save$( function( err, wizrunstep ) {
+      if(err) return done(err);
+
+      console.log(items)
+
+      // save the items
+      async.mapLimit(items,options.loadlimit,function(item,done){
+        var fields = seneca.util.argprops(
+          {}, 
+          item,
+          {
+            tag:     wizrunstep.tag,
+            wizrun:  wizrunstep.wizrun,
+            wizrunstep:  wizrunstep.wizrun,
+            wizstep: wizrunstep.wizstep,
+            wizitem: wizrunstep.wizitems[item.index],
+            step:    wizrunstep.wizstep,
+          },
+          'id, role, cmd, user')
+
+        var wizrunitem = wizrunitement.make$(fields)
+        wizrunitem.save$(fields,done)
+
+      }, function(err,res){
+        if(err) return done(err);
+        done(err,{ok:!err,wizrunstep:wizrunstep})
+      })
     })
-    
   }
 
 
@@ -364,11 +434,11 @@ module.exports = function( options ) {
 
 
 
-  function make_savesub( subent, name, parentent, parent ) {
+  function make_savesub( subent, name, parentent, parentname ) {
     return function( args, done ) {
       var seneca = this
 
-      var parentid  = args[parent]
+      var parentid  = args[parentname]
       var subid     = args.id 
       
       var index = args.index
@@ -388,7 +458,7 @@ module.exports = function( options ) {
 
       function update(sub) {
         var controlled = {}
-        controlled[parent] = parentid
+        controlled[parentname] = parentid
 
         var fields = seneca.util.argprops(
           // default values
@@ -405,7 +475,7 @@ module.exports = function( options ) {
 
         parentent.load$(parentid, function(err,parent){
           if( err ) return done(err);
-          if( !parent ) return done( seneca.fail('no-'+parent));
+          if( !parent ) return done( seneca.fail('no-'+parentname) );
 
           sub.data$(fields).save$( function( err, sub ) {
             if( err ) return done(err);

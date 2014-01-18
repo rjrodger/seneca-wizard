@@ -18,6 +18,7 @@ var async  = require('async')
 function cberr(win){
   return function(err){
     if(err) {
+      console.log(err)
       assert.fail(err, 'callback error')
     }
     else {
@@ -50,8 +51,17 @@ var accountent = si.make$('sys/account')
 
 function dump(fin,err) {
   memstorepin.dump({},cberr(function(dump){
-    console.log(dump)
+    console.log( JSON.stringify(dump,null,"  ")
+                 .replace(/\n        +/g," ")
+                 .replace(/\n      +\}/g,"}") 
+                 .replace(/"([^"]*)": "([^"]*)"/g,"$1=$2") 
+               )
+
+    if( err ) {
+      console.log(err)
+    }
     fin(err)
+
   }))
 }
 
@@ -61,15 +71,11 @@ describe('wizard', function() {
   var tmp = {}
   
   it('setup', function(fin) {
-    console.log('SETUP')
-
     userpin.register({nick:'u1'}, cberr(function(out){
 
       wizardpin.save({user:out.user,name:'foo'}, cberr(function(out){
         var wizard = out.wizard
         tmp.wiz1id = wizard.id
-
-        //return dump(fin)
 
         // steps and items
         async.map(
@@ -110,10 +116,9 @@ describe('wizard', function() {
           },
 
           function(err){
-            console.log('END SETUP')
-            console.log(tmp)
-            fin()
-            //dump(fin,err)
+            if( err ) console.log(err);
+            dump(fin,err)
+            //fin(err)
           }
         )
 
@@ -123,14 +128,25 @@ describe('wizard', function() {
 
 
   it('run',function(fin){
-    console.log('RUN')
     wizardpin.open({wizard:tmp.wiz1id,tag:'jan'}, cberr(function(out){
-      tmp.run1 = out.run
+      tmp.run1id = out.run.id
       
-      wizardpin.next({wizrun:tmp.run1},cberr(function(out){
-        console.log(out)
+      wizardpin.next({wizrun:tmp.run1id},cberr(function(out){
 
-        dump(fin)
+        var items1 = [{val:2},{val:4},{val:8}]
+        wizardpin.next({wizrun:tmp.run1id,foo:'aaa',items:items1},cberr(function(out){
+
+          var items2 = [{val:3},{val:6}]
+          wizardpin.next({wizrun:tmp.run1id,foo:'bbb',items:items2},cberr(function(out){
+
+            var items3 = [{val:5}]
+            wizardpin.next({wizrun:tmp.run1id,foo:'ccc',items:items3},cberr(function(out){
+
+              console.log(out)
+              dump(fin)
+            }))
+          }))
+        }))
       }))
     }))
   })
