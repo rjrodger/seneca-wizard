@@ -252,24 +252,32 @@ module.exports = function( options ) {
     var seneca = this
     var wizrun = args.wizrun
 
-    wizrun.step -= 1
-    var first = 0 <= wizrun.step
-    var last  = wizrun.step >= out.wizard.wizsteps.length
+    projectent.load$(wizrun.wizard,function(err,wizard){
+      if(err) return done(wizard);
+      if( !wizard ) return done( seneca.fail('no-wizard',{wizrun:wizrun}));
 
-    if( first ) {
-      wizrun.step = 0
-    }
+      wizrun.step -= 1
+      var first = 0 <= wizrun.step
+      var last  = wizrun.step >= wizard.wizsteps.length
 
-    seneca.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:wizrun.step},function(err,out){
-      if( err ) return done(err);
-      if( !out.ok ) return done(null,out);
+      if( first ) {
+        wizrun.step = 0
+      }
 
-      wizrun.save$( function(err, wizrun) {
+      seneca.act({role:plugin,cmd:'getrunstep',wizrun:wizrun,step:wizrun.step},function(err,out){
         if( err ) return done(err);
-        out.wizrun = wizrun
-        out.first = first
-        out.last   = last
-        done(null,out)
+        if( !out.ok ) return done(null,out);
+
+        out.wizrunstep.data$({state:'open'}).save$(function(err,wizrunstep){
+
+          wizrun.save$( function(err, wizrun) {
+            if( err ) return done(err);
+            out.wizrun = wizrun
+            out.first = first
+            out.last   = last
+            done(null,out)
+          })
+        })
       })
     })
   }
@@ -293,6 +301,8 @@ module.exports = function( options ) {
         
         wizrunstepent.load$( {wizrun:wizrun.id,wizstep:wizstep.id}, function(err,wizrunstep) {
           if( err ) return done(err);
+
+          console.log('GRS wizrun='+wizrun.id+' wizstep='+wizstep.id+' wizrunstep='+wizrunstep)
 
           if( !wizrunstep ) {
             wizrunstep = wizrunstepent.make$({
@@ -340,12 +350,10 @@ module.exports = function( options ) {
       items[i].index = i 
     }
 
-    console.log(items)
-
     var controlled = {
       wizrun:wizrunstep.wizrun,
       wizstep:wizrunstep.wizstep,
-      step:wizrunstep.wizstep,
+      step:wizrunstep.step,
       opened:wizrunstep.opened,
       closed:new Date().toISOString(),
       tag:wizrunstep.tag,
@@ -364,12 +372,7 @@ module.exports = function( options ) {
       // invalid properties, will be deleted
       'id, role, cmd, user')
 
-    console.log(fields)
-
     wizrunstep.data$(fields)
-    console.log('CCC')
-
-    console.log(wizrunstep)
 
     wizrunstep.save$( function( err, wizrunstep ) {
       if(err) return done(err);
@@ -384,10 +387,10 @@ module.exports = function( options ) {
           {
             tag:     wizrunstep.tag,
             wizrun:  wizrunstep.wizrun,
-            wizrunstep:  wizrunstep.wizrun,
+            wizrunstep:  wizrunstep.id,
             wizstep: wizrunstep.wizstep,
             wizitem: wizrunstep.wizitems[item.index],
-            step:    wizrunstep.wizstep,
+            step:    wizrunstep.step,
           },
           'id, role, cmd, user')
 

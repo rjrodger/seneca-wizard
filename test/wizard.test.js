@@ -117,6 +117,8 @@ describe('wizard', function() {
 
           function(err){
             if( err ) console.log(err);
+
+            console.log('SETUP')
             dump(fin,err)
             //fin(err)
           }
@@ -142,7 +144,7 @@ describe('wizard', function() {
             var items3 = [{val:5}]
             wizardpin.next({wizrun:tmp.run1id,foo:'ccc',items:items3},cberr(function(out){
 
-              console.log(out)
+              console.log('RUN')
               dump(fin)
             }))
           }))
@@ -151,6 +153,29 @@ describe('wizard', function() {
     }))
   })
 
+
+  it('nextprev',function(fin){
+    wizardpin.open({wizard:tmp.wiz1id,tag:'feb'}, cberr(function(out){
+      tmp.run2id = out.run.id
+      
+      wizardpin.next({wizrun:tmp.run2id},cberr(function(out){
+
+        var items1 = [{val:1},{val:2},{val:3}]
+        wizardpin.next({wizrun:tmp.run2id,items:items1},cberr(function(out){
+
+          var items2 = [{val:4},{val:5}]
+          wizardpin.next({wizrun:tmp.run2id,items:items2},cberr(function(out){
+
+            wizardpin.prev({wizrun:tmp.run2id},cberr(function(out){
+
+              console.log('NEXTPREV')
+              dump(fin)
+            }))
+          }))
+        }))
+      }))
+    }))
+  })
 
 })
 
