@@ -1,0 +1,62 @@
+<html><head>
+<script src="jquery.min.js"></script>
+<script>
+function printjson() { 
+  var arg = arguments[0] || arguments[1]
+  console.log(JSON.stringify( arg )) 
+}
+
+var http = {
+  req: function(method,url,data,cb) {
+    cb = cb || printjson
+    $.ajax({
+      url:         url,
+      type:        method,
+
+      contentType: data ? 'application/json' : undefined,
+      data:        data ? JSON.stringify(data) : undefined,
+      dataType:    'json',
+      cache:       false,
+
+      success:     function(out){cb(null,out)},
+      error:       function(out){cb(out)}
+    })
+  },
+
+
+  post: function(url,data,cb) {
+    http.req('POST',url,data,cb)
+  },
+
+  put: function(url,data,cb) {
+    http.req('PUT',url,data,cb)
+  },
+
+  get: function(url,cb) {
+    http.req('GET',url,null,cb)
+  },
+
+  del: function(url,cb) {
+    http.req('DELETE',url,null,cb)
+  }
+}
+</script>
+</head><body>
+
+<pre>
+open tab and load: http://localhost:3333/mem-store/dump
+
+GETFROMDUMP below means reload this tab and look for the id of relevant entity
+GETFROMRESULT below means read id from printed result of previous action (or lookup in dump)
+
+open new tab
+open console and run:
+
+http.get('/auth/login?username=u1&password=u1') // ignore error about /account - there is no account page!
+http.post('/wizard/open',{wizard:'<GETFROMDUMP>',tag:'foo'})
+http.post('/wizard/next',{wizrun:'<GETFROMRESULT>'})
+http.post('/wizard/next',{wizrun:'<GETFROMRESULT>',items:[{val:1},{val:2},{val:3}]})
+http.post('/wizard/prev',{wizrun:'<GETFROMRESULT>'})
+</pre>
+
+</body></html>

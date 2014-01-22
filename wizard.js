@@ -73,9 +73,11 @@ module.exports = function( options ) {
   seneca.add({role:plugin,cmd:'next'},       cmd_next)
   seneca.add({role:plugin,cmd:'prev'},       cmd_prev)
   seneca.add({role:plugin,cmd:'close'},      cmd_close)
+
   seneca.add({role:plugin,cmd:'getrunstep'}, cmd_getrunstep)
   seneca.add({role:plugin,cmd:'setrunstep'}, cmd_setrunstep)
 
+  seneca.add({role:plugin,cmd:'setup'}, cmd_setup)
 
 
   seneca.act({
@@ -100,6 +102,68 @@ module.exports = function( options ) {
 
 
 
+
+  function cmd_setup( args, done ) {
+    var seneca = this
+
+    var q = {wizard:true}
+    if( null != args.tag ) { q.tag = args.tag }
+    projectent.load$(q,function(err,wizard){
+      if( err ) return done(err);
+
+      if( wizard && !args.force ) return done(null,wizard)
+
+      var wizardid = wizard ? wizard.id : null 
+      seneca.act({role:plugin,cmd:'save',id:wizardid,id$:args.id$,name:args.name,tag:args.tag,user:args.user},function(err,out){
+        if( err ) return done(err);
+        var wizard = out.wizard
+
+        var stepI = 0
+        async.mapSeries(
+          args.spec,
+
+          function(step,stepdone) {
+            step.role   = plugin
+            step.cmd    = 'savestep'
+            step.index  = stepI++
+            step.wizard = wizard.id
+
+            var items = step.items
+            delete step.items
+
+            //console.dir(step)
+            seneca.act( step, function(err,out){
+              if( err ) return done(err);
+
+              var itemI = 0
+              async.mapSeries( 
+                items, 
+
+                function(item,itemdone){
+                  item.index   = itemI++
+                  item.role    = plugin
+                  item.cmd     = 'saveitem'
+                  item.wizard  = wizard.id
+                  item.wizstep = out.wizstep.id
+
+                  seneca.act( item, itemdone)
+                },
+                stepdone
+              )
+            })
+          },
+
+          function(err){
+            if( err ) return done(err);
+            return done(null,wizard)
+          }
+        )
+      })
+    })
+  }
+
+
+
   function cmd_save( args, done ) {
 
     // new wizard
@@ -109,7 +173,7 @@ module.exports = function( options ) {
       args.kind = options.kindprefix + (null == args.code ? 'primary' : args.kind)
 
       // mark this as a wizard for query convenience
-      args.wiz  = true
+      args.wizard  = true
     }
 
     args.role = 'project'
@@ -163,8 +227,8 @@ module.exports = function( options ) {
       wizrun.user = args.user.id
     }
 
-
     wizrun.save$(function(err,wizrun){
+      console.dir(wizrun)
       done(err,{ok:!err,run:wizrun})
     })
 
@@ -196,7 +260,7 @@ module.exports = function( options ) {
       var step = null == args.step ? wizrun.step : args.step
 
       function nextstep() {
-        console.log('NEXTSTEP')
+        //console.log('NEXTSTEP')
         wizrun.step += 1
 
         var first = 0 == wizrun.step
@@ -213,7 +277,7 @@ module.exports = function( options ) {
           wizrun.save$( function(err, wizrun) {
             if( err ) return done(err);
 
-            console.log(wizrun)
+            //console.log(wizrun)
 
             out.wizrun = wizrun
             out.first = first
@@ -233,7 +297,7 @@ module.exports = function( options ) {
           if( !out.ok ) return done(null,out);
 
           var setargs = _.extend({},args,{role:plugin,cmd:'setrunstep',wizrunstep:out.wizrunstep,tag:wizrun.tag,state:'closed'})
-          console.log(setargs)
+          //console.log(setargs)
 
           seneca.act(setargs,function(err,out){
             if( err ) return done(err);
@@ -268,14 +332,20 @@ module.exports = function( options ) {
         if( err ) return done(err);
         if( !out.ok ) return done(null,out);
 
-        out.wizrunstep.data$({state:'open'}).save$(function(err,wizrunstep){
+        wizrunitement.list$({wizrun:wizrun.id,sort$:{index:1}},function(err,items){
+          if( err ) return done(err);
 
-          wizrun.save$( function(err, wizrun) {
-            if( err ) return done(err);
-            out.wizrun = wizrun
-            out.first = first
-            out.last   = last
-            done(null,out)
+          out.items = items
+
+          out.wizrunstep.data$({state:'open'}).save$(function(err,wizrunstep){
+
+            wizrun.save$( function(err, wizrun) {
+              if( err ) return done(err);
+              out.wizrun = wizrun
+              out.first = first
+              out.last   = last
+              done(null,out)
+            })
           })
         })
       })
@@ -284,7 +354,7 @@ module.exports = function( options ) {
 
 
   function cmd_getrunstep( args, done ) {
-    console.log('GETRUNSTEP')
+    //console.log('GETRUNSTEP')
     var seneca = this
     var wizrun = args.wizrun
 
@@ -302,7 +372,7 @@ module.exports = function( options ) {
         wizrunstepent.load$( {wizrun:wizrun.id,wizstep:wizstep.id}, function(err,wizrunstep) {
           if( err ) return done(err);
 
-          console.log('GRS wizrun='+wizrun.id+' wizstep='+wizstep.id+' wizrunstep='+wizrunstep)
+          //console.log('GRS wizrun='+wizrun.id+' wizstep='+wizstep.id+' wizrunstep='+wizrunstep)
 
           if( !wizrunstep ) {
             wizrunstep = wizrunstepent.make$({
@@ -339,7 +409,7 @@ module.exports = function( options ) {
 
 
   function cmd_setrunstep( args, done ) {
-    console.log('SETRUNSTEP')
+    //console.log('SETRUNSTEP')
     var seneca = this
 
     var wizrunstep = args.wizrunstep
@@ -377,7 +447,7 @@ module.exports = function( options ) {
     wizrunstep.save$( function( err, wizrunstep ) {
       if(err) return done(err);
 
-      console.log(items)
+      //console.log(items)
 
       // save the items
       async.mapLimit(items,options.loadlimit,function(item,done){
@@ -503,161 +573,11 @@ module.exports = function( options ) {
 
 
 
-
-
-
-
-
-
-
-  /*
-  function loadstep( args, done ) {
-    var stepid = args.id
-
-    if( null == stepid && args.wizard && args.wizard.steps && -1 < args.step ) {
-      stepid = args.wizard.steps[args.step]
-    }
-
-    return wizstepent.load$(stepid,function(err,wizstep) {
-      done(err,{ok:!err,step:wizstep})
-    })
-  }
-
-
-  function savestep( args, done ) {
-    var index = args.step
-    if( null == index || index < 0 ) return done( seneca.fail('bad-step-index');
-
-    var wizard = args.wizard
-    var wizstepid = wizard.steps[index]
-      
-    if( null == wizstepid ) {
-      wizstep = wizstepent.make$()
-      update(wizstep)
-    }
-    else {
-      wizstepent.load$(wizstepid,function(err,wizstep){
-        if( err ) return done(err);
-        if( !wizstep ) return done( seneca.fail('no-step');
-        
-        update(wizstep)
-      })
-    }
-
-    function update(wizstep) {
-      var fields = seneca.util.argprops(
-
-        // default values
-        {}, 
-
-        // caller specified values, overrides defaults
-        args, 
-
-        // controlled values, can't be overridden
-        {
-          wizard:args.wizard.id,
-        }, 
-
-        // invalid properties, will be deleted
-        'id, role, cmd, user')
-
-      wizstep.data$(fields).save$( function( err, wizstep ) {
-        if( err ) return done(err);
-
-        wizard.steps[index] = wizstep.id
-
-        wizard.save$( function(err,wizard) {
-          if( err ) return done(err);
-
-          done(null,{wizard:wizard,wizstep:wizstep})
-        })
-      })
-    }
-  }
-
-
-
-  function loaditem( args, done ) {
-    var itemid = args.id
-
-    if( null == itemid && args.wizstep && args.wizstep.items && -1 < args.item ) {
-      itemid = args.wizstep.items[args.item]
-    }
-
-    return wizitement.load$(itemid,function(err,wizitem) {
-      done(err,{ok:!err,item:wizitem})
-    })
-  }
-
-
-
-  function saveitem( args, done ) {
-    var index = args.item
-    if( null == index || index < 0 ) return done( seneca.fail('bad-item-index');
-
-    var wizstep = args.wizstep
-    var wizitemid = wizstep.items[index]
-      
-    if( null == wizitemid ) {
-      wizitem = wizitement.make$()
-      update(wizitem)
-    }
-    else {
-      wizitement.load$(wizitemid,function(err,wizitem){
-        if( err ) return done(err);
-        if( !wizitem ) return done( seneca.fail('no-step');
-        
-        update(wizitem)
-      })
-    }
-
-    function update(wizitem) {
-      var fields = seneca.util.argprops(
-
-        // default values
-        {}, 
-
-        // caller specified values, overrides defaults
-        args, 
-
-        // controlled values, can't be overridden
-        {
-          wizstep:args.wizstep.id,
-        }, 
-
-        // invalid properties, will be deleted
-        'id, role, cmd, user')
-
-      wizitem.data$(fields).save$( function( err, wizitem ) {
-        if( err ) return done(err);
-
-        wizstep.items[index] = wizitem.id
-
-        wizstep.save$( function(err,wizstep) {
-          if( err ) return done(err);
-
-          done(null,{wizstep:wizstep,wizitem:wizitem})
-        })
-      })
-    }
-  }
-
-   */
-
-/*
-  
   function buildcontext( req, res, args, act, respond ) {
     var user = req.seneca && req.seneca.user
 
     if( user ) {
       args.user = user
-
-      if( args.account && !_.contains(args.user.accounts,args.account) ) {
-        return seneca.fail({code:'invalid-account'},respond)
-      }
-      else {
-        args.account = args.user.accounts[0]
-      }
     }
     else return seneca.fail({code:'user-required'},respond);
 
@@ -671,15 +591,14 @@ module.exports = function( options ) {
     prefix:options.prefix,
     pin:{role:plugin,cmd:'*'},
     map:{
-      'user_wizards': { GET:buildcontext },
-      'load':  { GET:buildcontext, alias:'load/:wizard' },
-      'save':  { POST:buildcontext },
-      'start': { POST:buildcontext },
-      'stop':  { POST:buildcontext }
+      open:   { POST:buildcontext },
+      next:   { POST:buildcontext },
+      prev:   { POST:buildcontext },
+      close:  { POST:buildcontext }
     }
   }})
 
-*/
+
 
 
   // define sys/account entity
